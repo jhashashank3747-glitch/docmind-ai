@@ -3,13 +3,16 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import UploadZone from '../components/UploadZone';
 import ChatInterface from '../components/ChatInterface';
+import ChatHistory from '../components/ChatHistory';
 
 function Dashboard() {
   const { user, logout } = useAuth();
   const [documents, setDocuments] = useState([]);
   const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pollingIds, setPollingIds] = useState([]);
+  const [existingChat, setExistingChat] = useState(null);
+  const [currentChatId, setCurrentChatId] = useState(null);
+  const [activeTab, setActiveTab] = useState('documents');
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -26,21 +29,17 @@ function Dashboard() {
     fetchDocuments();
   }, [fetchDocuments]);
 
-  // Poll for processing documents
   useEffect(() => {
     const processingDocs = documents.filter((d) => d.status === 'processing');
     if (processingDocs.length === 0) return;
-
     const interval = setInterval(() => {
       fetchDocuments();
     }, 3000);
-
     return () => clearInterval(interval);
   }, [documents, fetchDocuments]);
 
   const handleUploadSuccess = (newDoc) => {
     setDocuments((prev) => [newDoc, ...prev]);
-    setPollingIds((prev) => [...prev, newDoc._id]);
   };
 
   const toggleDocument = (doc) => {
@@ -62,6 +61,28 @@ function Dashboard() {
     }
   };
 
+  const handleSelectChat = async (chat) => {
+    try {
+      const res = await api.get(`/qa/history/${chat._id}`);
+      setExistingChat(res.data);
+      setCurrentChatId(chat._id);
+      setSelectedDocuments([]);
+    } catch (err) {
+      console.error('Failed to load chat');
+    }
+  };
+
+  const handleNewChat = () => {
+    setExistingChat(null);
+    setCurrentChatId(null);
+    setSelectedDocuments([]);
+    setActiveTab('documents');
+  };
+
+  const handleChatCreated = (newChatId) => {
+    setCurrentChatId(newChatId);
+  };
+
   const getStatusBadge = (status) => {
     if (status === 'ready') return { text: 'Ready', bg: '#DCFCE7', color: '#16A34A' };
     if (status === 'processing') return { text: 'Processing...', bg: '#FEF9C3', color: '#CA8A04' };
@@ -81,83 +102,136 @@ function Dashboard() {
           top: 0,
         }}
       >
-        {/* Logo */}
+        {/* Logo + New Chat */}
         <div className="p-5" style={{ borderBottom: '1px solid #E2E8F0' }}>
-          <div className="flex items-center gap-2">
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{ background: '#7C3AED' }}
-            >
-              <span className="text-white font-bold text-xs">D</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{ background: '#7C3AED' }}
+              >
+                <span className="text-white font-bold text-xs">D</span>
+              </div>
+              <span className="font-semibold" style={{ color: '#1E293B' }}>
+                DocMind AI
+              </span>
             </div>
-            <span className="font-semibold" style={{ color: '#1E293B' }}>DocMind AI</span>
+            <button
+              onClick={handleNewChat}
+              className="text-xs px-3 py-1.5 rounded-lg font-medium transition"
+              style={{ background: '#F5F3FF', color: '#7C3AED', border: '1px solid #DDD6FE' }}
+            >
+              + New
+            </button>
           </div>
         </div>
 
-        {/* Upload zone */}
-        <div className="p-4" style={{ borderBottom: '1px solid #E2E8F0' }}>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#94A3B8' }}>
-            Upload PDF
-          </p>
-          <UploadZone onUploadSuccess={handleUploadSuccess} />
+        {/* Tabs */}
+        <div
+          className="flex"
+          style={{ borderBottom: '1px solid #E2E8F0' }}
+        >
+          {['documents', 'history'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className="flex-1 py-3 text-xs font-medium capitalize transition"
+              style={{
+                color: activeTab === tab ? '#7C3AED' : '#94A3B8',
+                borderBottom: activeTab === tab ? '2px solid #7C3AED' : '2px solid transparent',
+              }}
+            >
+              {tab === 'documents' ? '📄 Documents' : '💬 History'}
+            </button>
+          ))}
         </div>
 
-        {/* Documents list */}
+        {/* Tab content */}
         <div className="flex-1 overflow-y-auto p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#94A3B8' }}>
-            Documents ({documents.length})
-          </p>
+          {activeTab === 'documents' ? (
+            <>
+              <div className="mb-4">
+                <p
+                  className="text-xs font-semibold uppercase tracking-wider mb-3"
+                  style={{ color: '#94A3B8' }}
+                >
+                  Upload PDF
+                </p>
+                <UploadZone onUploadSuccess={handleUploadSuccess} />
+              </div>
 
-          {loading ? (
-            <p className="text-sm" style={{ color: '#94A3B8' }}>Loading...</p>
-          ) : documents.length === 0 ? (
-            <p className="text-sm" style={{ color: '#94A3B8' }}>No documents yet</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {documents.map((doc) => {
-                const badge = getStatusBadge(doc.status);
-                const isSelected = selectedDocuments.find((d) => d._id === doc._id);
-                return (
-                  <div
-                    key={doc._id}
-                    onClick={() => toggleDocument(doc)}
-                    className="rounded-xl p-3 cursor-pointer transition group relative"
-                    style={{
-                      background: isSelected ? '#F5F3FF' : '#F8FAFC',
-                      border: `1px solid ${isSelected ? '#DDD6FE' : '#E2E8F0'}`,
-                    }}
-                  >
-                    <div className="flex items-start gap-2">
-                      <span className="text-lg">📄</span>
-                      <div className="flex-1 min-w-0">
-                        <p
-                          className="text-xs font-medium truncate"
-                          style={{ color: '#1E293B' }}
-                        >
-                          {doc.originalName}
-                        </p>
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block"
-                          style={{ background: badge.bg, color: badge.color }}
-                        >
-                          {badge.text}
-                        </span>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(doc._id);
+              <p
+                className="text-xs font-semibold uppercase tracking-wider mb-3"
+                style={{ color: '#94A3B8' }}
+              >
+                Your Documents ({documents.length})
+              </p>
+
+              {loading ? (
+                <p className="text-sm" style={{ color: '#94A3B8' }}>Loading...</p>
+              ) : documents.length === 0 ? (
+                <p className="text-sm" style={{ color: '#94A3B8' }}>No documents yet</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {documents.map((doc) => {
+                    const badge = getStatusBadge(doc.status);
+                    const isSelected = selectedDocuments.find((d) => d._id === doc._id);
+                    return (
+                      <div
+                        key={doc._id}
+                        onClick={() => toggleDocument(doc)}
+                        className="rounded-xl p-3 cursor-pointer transition group relative"
+                        style={{
+                          background: isSelected ? '#F5F3FF' : '#F8FAFC',
+                          border: `1px solid ${isSelected ? '#DDD6FE' : '#E2E8F0'}`,
                         }}
-                        className="opacity-0 group-hover:opacity-100 text-xs px-1.5 py-0.5 rounded transition"
-                        style={{ color: '#DC2626' }}
                       >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-lg">📄</span>
+                          <div className="flex-1 min-w-0">
+                            <p
+                              className="text-xs font-medium truncate"
+                              style={{ color: '#1E293B' }}
+                            >
+                              {doc.originalName}
+                            </p>
+                            <span
+                              className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block"
+                              style={{ background: badge.bg, color: badge.color }}
+                            >
+                              {badge.text}
+                            </span>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(doc._id);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 text-xs transition flex-shrink-0"
+                            style={{ color: '#DC2626' }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <p
+                className="text-xs font-semibold uppercase tracking-wider mb-3"
+                style={{ color: '#94A3B8' }}
+              >
+                Previous Chats
+              </p>
+              <ChatHistory
+                onSelectChat={handleSelectChat}
+                currentChatId={currentChatId}
+              />
+            </>
           )}
         </div>
 
@@ -171,7 +245,10 @@ function Dashboard() {
               {user?.name?.[0]?.toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>
+              <p
+                className="text-sm font-medium truncate"
+                style={{ color: '#1E293B' }}
+              >
                 {user?.name}
               </p>
             </div>
@@ -189,7 +266,10 @@ function Dashboard() {
       </div>
 
       {/* Main chat area */}
-      <div className="flex-1 flex flex-col" style={{ height: '100vh', overflow: 'hidden' }}>
+      <div
+        className="flex-1 flex flex-col"
+        style={{ height: '100vh', overflow: 'hidden' }}
+      >
         {/* Header */}
         <div
           className="px-6 py-4 flex items-center justify-between"
@@ -197,12 +277,16 @@ function Dashboard() {
         >
           <div>
             <h1 className="font-semibold" style={{ color: '#1E293B' }}>
-              {selectedDocuments.length === 0
+              {existingChat
+                ? existingChat.title
+                : selectedDocuments.length === 0
                 ? 'Select documents to start'
                 : `Chatting with ${selectedDocuments.length} document${selectedDocuments.length > 1 ? 's' : ''}`}
             </h1>
             <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>
-              {selectedDocuments.length === 0
+              {existingChat
+                ? `${existingChat.messages?.length || 0} messages`
+                : selectedDocuments.length === 0
                 ? 'Upload and select PDFs from the sidebar'
                 : 'Ask anything — answers are grounded in your documents'}
             </p>
@@ -220,7 +304,11 @@ function Dashboard() {
 
         {/* Chat */}
         <div className="flex-1 overflow-hidden">
-          <ChatInterface selectedDocuments={selectedDocuments} />
+          <ChatInterface
+            selectedDocuments={selectedDocuments}
+            existingChat={existingChat}
+            onChatCreated={handleChatCreated}
+          />
         </div>
       </div>
     </div>

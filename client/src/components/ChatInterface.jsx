@@ -1,16 +1,33 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
 
-function ChatInterface({ selectedDocuments }) {
+function ChatInterface({ selectedDocuments, existingChat, onChatCreated }) {
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [chatId, setChatId] = useState(null);
   const [expandedSources, setExpandedSources] = useState({});
+  const messagesEndRef = useRef(null);
+
+  // Load existing chat if provided
+  useEffect(() => {
+    if (existingChat) {
+      setMessages(existingChat.messages || []);
+      setChatId(existingChat._id);
+    } else {
+      setMessages([]);
+      setChatId(null);
+    }
+  }, [existingChat]);
+
+  // Auto scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleAsk = async () => {
     if (!question.trim()) return;
-    if (selectedDocuments.length === 0) {
+    if (selectedDocuments.length === 0 && !chatId) {
       alert('Please select at least one document first');
       return;
     }
@@ -27,7 +44,11 @@ function ChatInterface({ selectedDocuments }) {
         chatId,
       });
 
-      setChatId(res.data.chatId);
+      if (!chatId) {
+        setChatId(res.data.chatId);
+        onChatCreated && onChatCreated(res.data.chatId);
+      }
+
       setMessages((prev) => [
         ...prev,
         {
@@ -66,7 +87,7 @@ function ChatInterface({ selectedDocuments }) {
               Ask anything about your documents
             </h3>
             <p className="text-sm max-w-md" style={{ color: '#94A3B8' }}>
-              Select documents from the sidebar and start asking questions. DocMind AI will find relevant answers with source citations.
+              Select documents from the sidebar and start asking questions.
             </p>
             <div className="mt-6 flex flex-col gap-2 w-full max-w-sm">
               {[
@@ -92,7 +113,10 @@ function ChatInterface({ selectedDocuments }) {
         )}
 
         {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div
+            key={i}
+            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          >
             <div
               className="max-w-2xl rounded-2xl px-4 py-3"
               style={{
@@ -104,7 +128,6 @@ function ChatInterface({ selectedDocuments }) {
             >
               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
 
-              {/* Source citations */}
               {msg.sources && msg.sources.length > 0 && (
                 <div className="mt-3 flex flex-col gap-2">
                   <p className="text-xs font-medium" style={{ color: '#94A3B8' }}>
@@ -121,7 +144,9 @@ function ChatInterface({ selectedDocuments }) {
                         className="w-full text-left px-3 py-2 flex items-center justify-between text-xs"
                         style={{ background: '#F8FAFC', color: '#64748B' }}
                       >
-                        <span className="font-medium truncate">{src.documentName}</span>
+                        <span className="font-medium truncate">
+                          {src.documentName}
+                        </span>
                         <span>{expandedSources[`${i}-${j}`] ? '▲' : '▼'}</span>
                       </button>
                       {expandedSources[`${i}-${j}`] && (
@@ -151,13 +176,23 @@ function ChatInterface({ selectedDocuments }) {
               }}
             >
               <div className="flex gap-1 items-center">
-                <div className="w-2 h-2 rounded-full animate-bounce" style={{ background: '#7C3AED', animationDelay: '0ms' }} />
-                <div className="w-2 h-2 rounded-full animate-bounce" style={{ background: '#7C3AED', animationDelay: '150ms' }} />
-                <div className="w-2 h-2 rounded-full animate-bounce" style={{ background: '#7C3AED', animationDelay: '300ms' }} />
+                <div
+                  className="w-2 h-2 rounded-full animate-bounce"
+                  style={{ background: '#7C3AED', animationDelay: '0ms' }}
+                />
+                <div
+                  className="w-2 h-2 rounded-full animate-bounce"
+                  style={{ background: '#7C3AED', animationDelay: '150ms' }}
+                />
+                <div
+                  className="w-2 h-2 rounded-full animate-bounce"
+                  style={{ background: '#7C3AED', animationDelay: '300ms' }}
+                />
               </div>
             </div>
           </div>
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
@@ -171,7 +206,11 @@ function ChatInterface({ selectedDocuments }) {
               <span
                 key={doc._id}
                 className="text-xs px-2 py-1 rounded-full"
-                style={{ background: '#F5F3FF', color: '#7C3AED', border: '1px solid #DDD6FE' }}
+                style={{
+                  background: '#F5F3FF',
+                  color: '#7C3AED',
+                  border: '1px solid #DDD6FE',
+                }}
               >
                 📄 {doc.originalName}
               </span>
@@ -182,14 +221,16 @@ function ChatInterface({ selectedDocuments }) {
           <input
             type="text"
             placeholder={
-              selectedDocuments.length === 0
+              selectedDocuments.length === 0 && !chatId
                 ? 'Select documents first...'
                 : 'Ask a question...'
             }
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !loading) handleAsk(); }}
-            disabled={selectedDocuments.length === 0 || loading}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !loading) handleAsk();
+            }}
+            disabled={(selectedDocuments.length === 0 && !chatId) || loading}
             className="flex-1 rounded-xl px-4 py-3 text-sm outline-none"
             style={{
               background: '#F8FAFC',
@@ -199,10 +240,17 @@ function ChatInterface({ selectedDocuments }) {
           />
           <button
             onClick={handleAsk}
-            disabled={loading || selectedDocuments.length === 0 || !question.trim()}
+            disabled={
+              loading ||
+              (selectedDocuments.length === 0 && !chatId) ||
+              !question.trim()
+            }
             className="px-4 py-3 rounded-xl text-sm font-medium text-white transition"
             style={{
-              background: loading || selectedDocuments.length === 0 ? '#A78BFA' : '#7C3AED',
+              background:
+                loading || (selectedDocuments.length === 0 && !chatId)
+                  ? '#A78BFA'
+                  : '#7C3AED',
             }}
           >
             Ask
