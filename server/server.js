@@ -8,6 +8,7 @@ const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const documentRoutes = require('./routes/documentRoutes');
+const qaRoutes = require('./routes/qaRoutes');
 
 const app = express();
 
@@ -18,7 +19,12 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use('/api/auth', authRoutes);
+app.use('/api/documents', (req, res, next) => {
+  console.log('Documents route hit:', req.method, req.path);
+  next();
+});
 app.use('/api/documents', documentRoutes);
+app.use('/api/qa', qaRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

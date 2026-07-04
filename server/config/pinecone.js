@@ -1,9 +1,19 @@
 const { Pinecone } = require('@pinecone-database/pinecone');
 
-const pinecone = new Pinecone({
-  apiKey: process.env.PINECONE_API_KEY,
-});
+let pineconeClient = null;
 
-const getIndex = () => pinecone.index(process.env.PINECONE_INDEX);
+const getPinecone = () => {
+  if (!pineconeClient) {
+    pineconeClient = new Pinecone({
+      apiKey: process.env.PINECONE_API_KEY,
+    });
+  }
+  return pineconeClient;
+};
 
-module.exports = { pinecone, getIndex };
+const getIndex = () => {
+  const pc = getPinecone();
+  return pc.index(process.env.PINECONE_INDEX);
+};
+
+module.exports = { getIndex };
